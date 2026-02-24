@@ -55,7 +55,7 @@ method = 'full';
 figure;stem(corrs(1,:)); hold on
 
 %%
-comp_idx = 38
+comp_idx = 1
 wx = W(:,comp_idx);
 patt = A(:,comp_idx);
 patt = patt * sign(patt(abs(patt)==max(abs(patt))));
