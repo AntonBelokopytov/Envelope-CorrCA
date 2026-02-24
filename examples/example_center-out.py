@@ -13,7 +13,7 @@ from matplotlib.gridspec import GridSpec
 # %%
 # For parkinson example chose 8-12 Hz filter below
 # For control example chose 15-25 Hz filter below
-dpath = 'Patient1_ConditionOff_CenterOut_2-35Hz_clear_epochs.fif'
+dpath = 'data/Patient1_ConditionOff_CenterOut_2-35Hz_clear_epochs.fif'
 # dpath = 'Control_4_CenterOut_epochs.fif'
 
 epochs = mne.read_epochs(dpath, preload=True)
@@ -63,7 +63,7 @@ band = [fmin, fmax]
 b, a = butter(4, np.array(band) / (Fs / 2), btype='band')
 Xfilt = filtfilt(b, a, X, axis=-1)
 
-import env_lib as env_functions
+import src.env_corrca as env_functions
 W, A, corrs, Epochs_cov, eigenvalues = env_functions.env_corrca(Xfilt,Fs)
 
 # %%
