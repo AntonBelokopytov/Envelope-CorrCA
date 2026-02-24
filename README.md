@@ -5,44 +5,6 @@ Function to find comodulated induced activity across multiple trials
 ![Component example](docs/images/comp_example.png)
 
 
-\section*{Envelope-CorrCA}
-
-Envelope-CorrCA extracts spatial components whose induced (power) activity 
-is maximally correlated across trials. The method operates in the space of 
-covariance matrices computed from short sliding windows.
-
-\subsection*{Data}
-
-Let
-\[
-X \in \mathbb{R}^{T \times C \times N}
-\]
-where
-\begin{itemize}
-\item $T$ -- number of time samples,
-\item $C$ -- number of channels,
-\item $N$ -- number of trials.
-\end{itemize}
-
-\subsection*{Epoching}
-
-Each trial is segmented into overlapping windows of length $W$ with step $S$:
-\[
-X^{(n)} \rightarrow X^{(n)}_e, 
-\qquad e = 1,\dots,E.
-\]
-
-\subsection*{Covariance Time Series}
-
-For each window:
-\[
-C^{(n)}_e = \operatorname{cov}(X^{(n)}_e).
-\]
-
-Mean covariance:
-\[
-C_{xx} = \frac{1}{E} \sum_{e=1}^{E} C_e.
-\]
 
 \subsection*{Whitening}
 
