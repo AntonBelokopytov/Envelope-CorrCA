@@ -42,7 +42,7 @@ def env_corrca(X, Fs):
     
     opt = {}
     opt["X_min_var_explained"] = 0.99
-    opt["whitening_reg"] = 1e-5
+    opt["whitening_reg"] = 0.01
 
     T, n_ch, n_trials = X.shape
 

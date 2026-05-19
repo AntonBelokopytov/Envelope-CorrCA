@@ -2,16 +2,15 @@ close all
 clear
 clc
 
-ft_path = 'C:\Users\ansbel\Documents\2Git\fieldtrip\fieldtrip';
+ft_path = 'C:\Users\anton\Documents\GitHub\CBI\site-packages\fieldtrip\';
 
 if ~exist('ft_defaults','file')
     addpath(ft_path);
 end
 
 %% Target epochs
-sub_path = 'Patient1_ConditionOff_CenterOut_2-35Hz_clear_epochs.fif';
-% sub_path = 'Control_4_CenterOut_epochs.fif';
-
+sub_path = 'D:\OS(CURRENT)\data\parkinson\pathology\Patient_1_CenterOut_OFF_EEG_clean_epochs.fif';
+% sub_path = 'D:\OS(CURRENT)\data\parkinson\control\Control_3_CenterOut_epochs.fif';
 cfg = [];
 cfg.dataset = sub_path; 
 Epochs_inf = ft_preprocessing(cfg); 
@@ -21,43 +20,80 @@ Fs = Epochs_inf.hdr.Fs;
 [~, n_ts_ep] = size(Epochs_inf.trial{1});
 
 %%
-idxs = [  2,   3,   4,   5,   8,  10,  14,  15,  18,  19,  20,  22,  25,...
-        27,  28,  31,  33,  35,  36,  38,  41,  43,  45,  46,  48,  49,...
-        52,  56,  57,  63,  66,  67,  68,  71,  72,  74,  78,  79,  83,...
-        84,  85,  88,  89,  92,  95,  98,  99, 102, 103, 104, 107, 111,...
-       112, 114, 116, 117, 122, 123, 124, 130, 131, 135, 136, 138, 141,...
-       143, 146, 148, 151, 153, 154, 156] + 1;
+idxs = [  0,   1,   2,   3,   6,   8,  12,  13,  15,  16,  17,  19,  22,...
+        24,  25,  28,  30,  32,  33,  35,  37,  39,  41,  42,  44,  45,...
+        48,  50,  51,  55,  57,  58,  59,  62,  63,  65,  69,  70,  73,...
+        74,  75,  78,  79,  82,  85,  88,  89,  92,  93,  94,  97, 100,...
+       101, 103, 105, 106, 110, 111, 112, 117, 118, 121, 122, 124, 126,...
+       128, 131, 132, 134, 136, 137, 138] + 1;
+% idxs = [  1,   3,   4,   5,   7,   8,  12,  14,  15,  17,  21,  22,  25,...
+%         26,  28,  29,  31,  33,  36,  37,  39,  40,  42,  44,  48,  49,...
+%         50,  53,  55,  56,  59,  61,  63,  64,  66,  67,  71,  72,  73,...
+%         74,  76,  77,  80,  81,  85,  86,  89,  90,  92,  94,  98,  99,...
+%        101, 103, 108, 109, 110, 111, 114, 116, 117, 120, 121, 124, 125,...
+%        127, 128, 130, 131, 134, 136, 138, 141, 142, 144, 146, 147] + 1;
 
-Fmin = 8;
-Fmax = 12;
+all_idxd = 1:numel(Epochs_inf.trial);
+% idxs = setdiff(all_idxd, idxs); 
+
+Fc = 9;
+band_halfwidth = max(2, Fc * 0.10);
+
+Fmin = Fc - band_halfwidth;
+Fmax = Fc + band_halfwidth;
 band = [Fmin Fmax];
 
-Wsize = 0.25;
-Ssize = 0.1;
+Wsize = 1/Fc;
+Ssize = Wsize/2;
 
 [b_band,a_band] = butter(4, band/(Fs/2));
 
 Fs = Epochs_inf.hdr.Fs;
 
-clear Epochs
+clear Epochs Epochs_alg
 for ep_idx=1:numel(Epochs_inf.trial)  
     Ep = Epochs_inf.trial{ep_idx}';
     Ep = Ep(:,1:38);
     Epfilt = filtfilt(b_band,a_band,Ep);
     Epochs(:,:,ep_idx) = Epfilt;
+    Epochs_alg(:,:,ep_idx) = Epfilt(Fs/2+1:end-Fs/2,:);
 end
+
 Epochs = Epochs(:,:,idxs);
+Epochs_alg = Epochs_alg(:,:,idxs);
 
-method = 'full';
-[W, A, corrs, Epochs_cov, S] = env_corrca(Epochs, Fs, Wsize, Ssize, method);
+[W, A, z_trials, X_epochs] = env_corrca_t(Epochs_alg, Fs, Wsize, Ssize);
+% [W, A, z_trials, X_epochs] = env_laplace_dec(Epochs_alg, Fs, Wsize, Ssize);
+% [z_trials, W, A, X_epochs, X_covs] = env_grad_dec(Epochs_alg, Fs, Wsize, Ssize);
 
 %%
-figure;stem(corrs(1,:)); hold on
+% z_comp = squeeze(z_trials(:,2,:));
+% z_comp = z_comp(:);
+% z_comp = repmat(mean(z_trials(:,1,:),3), 1, 72);
+
+% [W,A] = spoc(X_epochs(:,:,:),z_comp(:)');
 
 %%
-comp_idx = 1
-wx = W(:,comp_idx);
-patt = A(:,comp_idx);
+figure
+imagesc(squeeze(z_trials(:,1,:))')
+colorbar
+
+%%
+figure
+plot(mean(z_trials(:,3,:),3))
+
+%%
+figure
+plot(z_trials(:,1,54))
+
+%%
+gl_c = 1;
+comp_idx = 1;
+wx = squeeze(W(gl_c,:,comp_idx))';
+patt = squeeze(A(gl_c,:,comp_idx));
+% wx = squeeze(W(:,comp_idx));
+% patt = squeeze(A(:,comp_idx));
+
 patt = patt * sign(patt(abs(patt)==max(abs(patt))));
 
 clear Yenv Yseg
@@ -81,7 +117,6 @@ elec.label    = elec.label(1:38);
 figure; hold on; grid on
 set(gcf,'Color','w');
 
-% tsec     = (1:size(Xenv,1))/Fs;
 tsec     = linspace(-3, 4, size(Yenv,1));
 E        = size(Yenv, 2);
 env_mean = mean(Yenv, 2, 'omitnan');
@@ -201,3 +236,5 @@ set(findall(p6, 'type','axes'), 'Color', figCol);
 % ==== Синхронизация осей по X у временных графиков =========================
 linkaxes([axH axERP axENV], 'x');
 
+% Жестко фиксируем границы от -3 до 4
+xlim(axH, [-3, 4]);
