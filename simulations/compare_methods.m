@@ -9,16 +9,16 @@ end
 ft_defaults;
 
 %% 1. Подготовка лейаута и загрузка матриц (Forward model)
-elec = load("elec.mat").elec;
+elec = load("D:\OS(CURRENT)\data\simulation_support_data\eeg\elec.mat").elec;
 topo = [];
 topo.dimord = 'chan_time';
-topo.label  = elec.label;  
+topo.label  = elec.label;
 topo.time   = 0;
 topo.elec   = elec;
 
 laycfg = [];
 laycfg.elec = elec;
-lay = ft_prepare_layout(laycfg);     
+lay = ft_prepare_layout(laycfg);
 
 cfg = [];
 cfg.marker       = '';
@@ -30,7 +30,7 @@ cfg.colorbar     = 'no';
 cfg.layout.pos(:, 1:2) = cfg.layout.pos(:, 1:2) * 1.1; 
 cfg.layout.pos(:, 2) = cfg.layout.pos(:, 2) - 0.05;
 
-G = load('MNE_EEG_FWD_TRPL.mat').MNE_EEG_FWD_TRPL;
+G = load('D:\OS(CURRENT)\data\simulation_support_data\eeg\MNE_EEG_FWD_TRPL.mat').MNE_EEG_FWD_TRPL;
 
 %% 2. Параметры симуляции
 NConstSrc = 91; 
@@ -40,15 +40,15 @@ TrLeSe = 5;
 Fs = 100; 
 NTr = 50; 
 NLclSrc = 11;
-Wsize = 1 / 8; 
+Wsize = 1 / 2; 
 Ssize = Wsize/2;
 
 snr_vec = 10.^(-1.4:0.2:1);
 Nsnr = length(snr_vec);
-NMC = 1000;
+NMC = 5;
 
 % Список методов для сравнения
-methods = {'Envelope CorrCA', 'Hilbert CorrCA', 'eSPoC', 'SPoC'};
+methods = {'Envelope CorrCA', 'Envelope CorrCA T'};
 nMethods = length(methods);
 colors = lines(nMethods); % Цвета для графиков
 
@@ -64,40 +64,24 @@ for snr_i = 1:Nsnr
     fprintf('Обработка SNR: 10^{%.1f}...\n', log10(SNR));
     
     parfor mc_i = 1:NMC
-        % Генерация данных (замени на свою функцию, если нужно)
         [Xtrials, Xraw, tm, TgPa] = gen_dat_corrca( ...
             G, NConstSrc, Ntg, flanker, TrLeSe, ...
             Fs, NTr, NLclSrc, SNR);
         
         tmraw = repmat(tm,[1,NTr]);
         
-        % Проходим по всем методам
         for m = 1:nMethods
             method_name = methods{m};
             
-            % --- Блок вызова алгоритма ---
-            % В зависимости от имени вызываем нужную функцию
             if strcmp(method_name, 'Envelope CorrCA')
                 [W, A] = env_corrca(Xtrials, Fs, Wsize, Ssize);
                 
-            elseif strcmp(method_name, 'Hilbert CorrCA')
-                % Вызов Hilbert версии (замени на реальный)
-                [W, A] = env_corrca_hilbert(Xtrials, Fs); 
-                
-            elseif strcmp(method_name, 'eSPoC')
-                [W, A] = espoc(Xtrials, tm);
-                
-            elseif strcmp(method_name, 'SPoC')
-                [W, A] = spoc(Xtrials, tm);
+            elseif strcmp(method_name, 'Envelope CorrCA T')
+                [W, A] = env_corrca_t(Xtrials, Fs, Wsize, Ssize); 
             end
             
-            % Устранение лишних размерностей (если методы возвращают 3D)
-            if ndims(W) == 3, W = squeeze(W(1,:,:)); end
-            if ndims(A) == 3, A = squeeze(A(1,:,:)); end
-            
-            % --- Блок отбора: берем ТОЛЬКО первую и последнюю компоненты ---
-            W_cand = [W(:,1), W(:,end)];
-            A_cand = [A(:,1), A(:,end)];
+            W_cand = [squeeze(W(1,:,1)); squeeze(W(1,:,end))]';
+            A_cand = [squeeze(A(1,:,1)); squeeze(A(1,:,end))]';
             
             env_corr = zeros(1, 2);
             env_cands = zeros(length(tmraw), 2);
@@ -106,14 +90,11 @@ for snr_i = 1:Nsnr
                 w = W_cand(:, w_i);
                 env_cands(:, w_i) = abs(hilbert(w' * Xraw));
                 
-                % Берем abs, т.к. метод инвариантен к знаку и мы ищем максимальную ко-модуляцию
                 env_corr(w_i) = abs(corr(env_cands(:, w_i), tmraw')); 
             end
             
-            % Выбираем наилучшую из двух
             [b_corr_env, b_idx] = max(env_corr);
             
-            % Сохраняем результаты
             env_corr_res(snr_i, mc_i, m)  = b_corr_env;
             patt_corr_res(snr_i, mc_i, m) = abs(corr(A_cand(:, b_idx), TgPa));
         end

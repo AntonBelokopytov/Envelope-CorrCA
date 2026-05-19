@@ -56,12 +56,10 @@ function [W, A, z_trials, X_epochs, raw_var] = env_corrca(X, Fs, Wsize, Ssize, l
         raw_var(:, j) = var(z_tr, 0, 1)'; 
         z_trials(:,:,j) = (z_tr - mean(z_tr, 1)) ./ std(z_tr, [], 1);
     end
-    
-    W = zeros(n_comps, n_channels, n_channels);
-    A = zeros(n_comps, n_channels, n_channels);
-    
-    % Предполагается, что функция my_spoc доступна в вашем пути MATLAB
-    n_comps_to_calc = min(10, n_comps); % Защита от выхода за пределы
+        
+    n_comps_to_calc = min(10, n_comps); 
+    W = zeros(n_comps_to_calc, n_channels, n_channels);
+    A = zeros(n_comps_to_calc, n_channels, n_channels);
     for comp_i = 1:n_comps_to_calc
         z_trials_comp = squeeze(z_trials(:, comp_i, :));
         [w, a] = my_spoc(X_covs, z_trials_comp, lambda);

@@ -9,7 +9,7 @@ end
 ft_defaults;
 
 %% 1. Подготовка лейаута и загрузка матриц (Forward model)
-elec = load("elec.mat").elec;
+elec = load("D:\OS(CURRENT)\data\simulation_support_data\eeg\elec.mat").elec;
 topo = [];
 topo.dimord = 'chan_time';
 topo.label  = elec.label;  
@@ -30,7 +30,7 @@ cfg.colorbar     = 'no';
 cfg.layout.pos(:, 1:2) = cfg.layout.pos(:, 1:2) * 1.1; 
 cfg.layout.pos(:, 2) = cfg.layout.pos(:, 2) - 0.05;
 
-G = load('MNE_EEG_FWD_TRPL.mat').MNE_EEG_FWD_TRPL;
+G = load('D:\OS(CURRENT)\data\simulation_support_data\eeg\MNE_EEG_FWD_TRPL.mat').MNE_EEG_FWD_TRPL;
 
 %% 2. Параметры симуляции
 NConstSrc = 91; 
@@ -40,7 +40,7 @@ TrLeSe = 5;
 Fs = 100; 
 NTr = 50; 
 NLclSrc = 11;
-Wsize = 1 / 8; 
+Wsize = 1 / 2; 
 Ssize = Wsize/2;
 
 snr_vec = 10.^(-1.4:0.2:1);
@@ -48,7 +48,7 @@ Nsnr = length(snr_vec);
 NMC = 1000;
 
 % Список методов для сравнения
-methods = {'Envelope CorrCA', 'Hilbert CorrCA', 'eSPoC', 'SPoC'};
+methods = {'Envelope CorrCA t', 'Hilbert CorrCA', 'eSPoC', 'SPoC'};
 nMethods = length(methods);
 colors = lines(nMethods); % Цвета для графиков
 
@@ -82,14 +82,7 @@ for snr_i = 1:Nsnr
                 
             elseif strcmp(method_name, 'Hilbert CorrCA')
                 % Вызов Hilbert версии (замени на реальный)
-                [W, A] = env_corrca_hilbert(Xtrials, Fs); 
-                
-            elseif strcmp(method_name, 'eSPoC')
-                [W, A] = espoc(Xtrials, tm);
-                
-            elseif strcmp(method_name, 'SPoC')
-                [W, A] = spoc(Xtrials, tm);
-            end
+                [W, A] = env_corrca_t(Xtrials, Fs); 
             
             % Устранение лишних размерностей (если методы возвращают 3D)
             if ndims(W) == 3, W = squeeze(W(1,:,:)); end
