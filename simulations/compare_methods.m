@@ -9,10 +9,10 @@ ft_defaults;
 % ... (код инициализации данных остается без изменений) ...
 elec = load("D:\OS(CURRENT)\data\simulation_support_data\eeg\elec.mat").elec;
 G = load('D:\OS(CURRENT)\data\simulation_support_data\eeg\MNE_EEG_FWD_TRPL.mat').MNE_EEG_FWD_TRPL;
-NConstSrc = 91; Ntg = 1; flanker = 1; TrLeSe = 5; Fs = 100; NTr = 20; NLclSrc = 10;
+NConstSrc = 91; Ntg = 1; flanker = 1; TrLeSe = 10; Fs = 100; NTr = 30; NLclSrc = 10;
 Wsize = 1 / 2; Ssize = Wsize / 2;
 snr_vec = 10.^(-1.4:0.2:1);
-Nsnr = length(snr_vec); NMC = 5;
+Nsnr = length(snr_vec); NMC = 200;
 methods = {'SPoC_\lambda', 'Envelope CorrCA', 'Envelope CorrCA D', 'Envelope CorrCA T'};
 nMethods = length(methods);
 colors = lines(nMethods);
@@ -97,48 +97,36 @@ for snr_i = 1:Nsnr
     end
 end
 
-%% Визуализация 1: Корреляции
-figure('Name', 'Correlations Analysis', 'Position', [100, 100, 1200, 400]);
-metrics1 = {z_corr_res, cov_corr_res, patt_corr_res};
-titles1 = {'Hidden Comp Corr', 'Final Comp Corr', 'Pattern Corr'};
-ylabels = {'r', 'r', 'r'};
+%% 
+figure('Name', 'Results Analysis', 'Position', [100, 100, 1000, 800]);
+
+metrics = {z_corr_res, cov_corr_res, patt_corr_res, itc_final_res};
+titles  = {'Hidden Comp Correlation', 'Final Comp Correlation', 'Pattern Correlation', 'ITC'};
+ylabels = {'r', 'r', 'r', 'ITC'};
 snr_powers = log10(snr_vec);
 
-for k = 1:3
-    subplot(1, 3, k); hold on;
+for k = 1:4
+    subplot(2, 2, k); hold on;
     for m = 1:nMethods
-        y = squeeze(mean(metrics1{k}(:, :, m), 2))';
-        std_dev = squeeze(std(metrics1{k}(:, :, m), 0, 2))';
+        % Используем 'omitnan', чтобы SPoC не портил расчеты Hidden Comp Corr
+        y = squeeze(mean(metrics{k}(:, :, m), 2, 'omitnan'))';
+        std_dev = squeeze(std(metrics{k}(:, :, m), 0, 2, 'omitnan'))';
         
         % Заливка отклонения
         fill([snr_powers, fliplr(snr_powers)], [y-std_dev, fliplr(y+std_dev)], ...
             colors(m,:), 'FaceAlpha', 0.1, 'EdgeColor', 'none', 'HandleVisibility', 'off');
         plot(snr_powers, y, '-o', 'LineWidth', 1.5, 'Color', colors(m,:), 'DisplayName', methods{m});
     end
-    grid on; title(titles1{k}, 'FontWeight', 'bold'); 
-    xlabel('log10(SNR)'); ylabel(ylabels{k}); ylim([0 1.05]);
-    if k == 1, legend('Location', 'best', 'FontSize', 8); end
-end
-
-%% Визуализация 2: ITC и Дисперсия (Финальные)
-figure('Name', 'Final Metrics Analysis', 'Position', [100, 100, 800, 400]);
-metrics2 = {itc_final_res, var_final_res};
-titles2 = {'ITC Final', 'Var Final'};
-
-for k = 1:2
-    subplot(1, 2, k); hold on;
-    for m = 1:nMethods
-        y  = squeeze(mean(metrics2{k}(:, :, m), 2))'; 
-        std_dev = squeeze(std(metrics2{k}(:, :, m), 0, 2))';
-        
-        fill([snr_powers, fliplr(snr_powers)], [y-std_dev, fliplr(y+std_dev)], ...
-            colors(m,:), 'FaceAlpha', 0.1, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-        plot(snr_powers, y, '-o', 'LineWidth', 1.5, 'Color', colors(m,:), 'DisplayName', methods{m});
+    
+    grid on; 
+    title(titles{k}, 'FontWeight', 'bold'); 
+    xlabel('SNR'); 
+    ylabel(ylabels{k}); 
+    ylim([0 1.05]);
+    
+    if k == 1
+        legend('Location', 'best', 'FontSize', 8); 
     end
-    grid on; title(titles2{k}, 'FontWeight', 'bold'); 
-    xlabel('log10(SNR)'); 
-    if k == 1, ylabel('ITC'); else, ylabel('Var'); end
-    if k == 1, legend('Location', 'best', 'FontSize', 8); end
 end
 
 function itc = compute_itc(data_mat)
@@ -146,4 +134,5 @@ function itc = compute_itc(data_mat)
     if n_tr < 2, itc = 0; return; end
     C = corr(data_mat);
     itc = (sum(C(:)) - n_tr) / (n_tr * (n_tr - 1));
-end
+end 
+

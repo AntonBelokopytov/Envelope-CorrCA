@@ -32,7 +32,7 @@ for snr_i = 1:Nsnr
     SNR = snr_vec(snr_i);
     fprintf('Обработка SNR: 10^{%.1f}...\n', log10(SNR));
     
-    for mc_i = 1:NMC
+    parfor mc_i = 1:NMC
         [Xtrials, ~, tm, TgPa] = gen_dat_corrca(G, NConstSrc, Ntg, flanker, TrLeSe, Fs, NTr, NLclSrc, SNR);
         tm_epo = epoch_data((tm - min(tm)).^2', Fs, Wsize, Ssize);
         tm_z_true = reshape(mean(tm_epo, 1), [], 1); 
@@ -120,26 +120,24 @@ for k = 1:3
     if k == 1, legend('Location', 'best', 'FontSize', 8); end
 end
 
-%% Визуализация 2: ITC и Дисперсия
-figure('Name', 'ITC and Variance Analysis', 'Position', [100, 100, 1200, 600]);
-% Метрики: 2.1 ITC Hidden, 2.2 ITC Final, 2.3 Var Hidden, 2.4 Var Final
-metrics2 = {itc_hidden_res, itc_final_res, var_hidden_res, var_final_res};
-titles2 = {'ITC Hidden', 'ITC Final', 'Var Hidden', 'Var Final'};
-ylabels2 = {'ITC', 'ITC', 'Var', 'Var'};
+%% Визуализация 2: ITC и Дисперсия 
+figure('Name', 'Final Metrics Analysis', 'Position', [100, 100, 800, 400]);
+metrics2 = {itc_final_res, var_final_res};
+titles2 = {'ITC Final', 'Var Final'};
 
-for k = 1:4
-    subplot(2, 2, k); hold on;
+for k = 1:2
+    subplot(1, 2, k); hold on;
     for m = 1:nMethods
         y  = squeeze(mean(metrics2{k}(:, :, m), 2))'; 
         std_dev = squeeze(std(metrics2{k}(:, :, m), 0, 2))';
         
-        % Если для SPoC везде NaN, plot просто пропустит метод
         fill([snr_powers, fliplr(snr_powers)], [y-std_dev, fliplr(y+std_dev)], ...
             colors(m,:), 'FaceAlpha', 0.1, 'EdgeColor', 'none', 'HandleVisibility', 'off');
         plot(snr_powers, y, '-o', 'LineWidth', 1.5, 'Color', colors(m,:), 'DisplayName', methods{m});
     end
     grid on; title(titles2{k}, 'FontWeight', 'bold'); 
-    xlabel('log10(SNR)'); ylabel(ylabels2{k});
+    xlabel('log10(SNR)'); 
+    if k == 1, ylabel('ITC'); else, ylabel('Var'); end
     if k == 1, legend('Location', 'best', 'FontSize', 8); end
 end
 
