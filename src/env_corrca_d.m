@@ -1,4 +1,4 @@
-function [W, A, z_trials, X_covs] = env_corrca(X, Fs, Wsize, Ssize, lambda)
+function [W, A, z_trials, X_covs] = env_corrca_d(X, Fs, Wsize, Ssize, lambda)
     if nargin < 5
         lambda = 1e-5; 
     end
@@ -26,22 +26,21 @@ function [W, A, z_trials, X_covs] = env_corrca(X, Fs, Wsize, Ssize, lambda)
         end
     end
     
-    D_vec = n_channels * (n_channels + 1) / 2;
-    X_covsVec = zeros(n_epochs, D_vec, n_trials);
+    X_covsDiag = zeros(n_epochs, n_channels, n_trials);
     for j=1:n_trials
         for i=1:n_epochs
-            X_covsVec(i,:,j) = cov2upper(X_covs(:,:,i,j))';
+            X_covsDiag(i,:,j) = diag(X_covs(:,:,i,j));
         end
     end
     
-    [Vc, ~, ~] = corrca(X_covsVec, lambda);
+    [Vc, ~, ~] = corrca(X_covsDiag, lambda);
     
     n_comps = size(Vc, 2);
     z_trials = zeros(n_epochs, n_comps, n_trials);
     raw_var = zeros(n_comps, n_trials);
     
     for j = 1:n_trials
-        trial_data = squeeze(X_covsVec(:,:,j));
+        trial_data = squeeze(X_covsDiag(:,:,j));
         z_tr = trial_data * Vc; 
         
         raw_var(:, j) = var(z_tr, 0, 1)'; 

@@ -62,7 +62,7 @@ end
 Epochs = Epochs(:,:,idxs);
 Epochs_alg = Epochs_alg(:,:,idxs);
 
-[W, A, z_trials, X_epochs] = env_corrca_t(Epochs_alg, Fs, Wsize, Ssize);
+[W, A, z_trials, X_epochs] = env_corrca_d(Epochs_alg, Fs, Wsize, Ssize);
 % [W, A, z_trials, X_epochs] = env_laplace_dec(Epochs_alg, Fs, Wsize, Ssize);
 % [z_trials, W, A, X_epochs, X_covs] = env_grad_dec(Epochs_alg, Fs, Wsize, Ssize);
 
@@ -80,7 +80,7 @@ colorbar
 
 %%
 figure
-plot(mean(z_trials(:,3,:),3))
+plot(mean(z_trials(:,1,:),3))
 
 %%
 figure

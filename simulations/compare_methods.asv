@@ -8,17 +8,17 @@ if ~exist('ft_defaults','file')
 end
 ft_defaults;
 
-%% 1. Подготовка лейаута и загрузка матриц (Forward model)
+%%
 elec = load("D:\OS(CURRENT)\data\simulation_support_data\eeg\elec.mat").elec;
 topo = [];
 topo.dimord = 'chan_time';
-topo.label  = elec.label;  
+topo.label  = elec.label;
 topo.time   = 0;
 topo.elec   = elec;
 
 laycfg = [];
 laycfg.elec = elec;
-lay = ft_prepare_layout(laycfg);     
+lay = ft_prepare_layout(laycfg);
 
 cfg = [];
 cfg.marker       = '';
@@ -32,102 +32,103 @@ cfg.layout.pos(:, 2) = cfg.layout.pos(:, 2) - 0.05;
 
 G = load('D:\OS(CURRENT)\data\simulation_support_data\eeg\MNE_EEG_FWD_TRPL.mat').MNE_EEG_FWD_TRPL;
 
-%% 2. Параметры симуляции
+%% 
 NConstSrc = 91; 
 Ntg = 1; 
 flanker = 1; 
 TrLeSe = 5; 
 Fs = 100; 
-NTr = 50; 
-NLclSrc = 11;
+NTr = 20; 
+NLclSrc = 10;
 Wsize = 1 / 2; 
-Ssize = Wsize/2;
+Ssize = Wsize / 2;
 
-snr_vec = 10.^(-1.4:0.2:1);
+% snr_vec = 10.^(-1.4:0.2:1);
+snr_vec = 10.^(0.8:0.2:1);
 Nsnr = length(snr_vec);
-NMC = 1000;
+NMC = 10;
 
-% Список методов для сравнения
-methods = {'Envelope CorrCA t', 'Hilbert CorrCA', 'eSPoC', 'SPoC'};
+% methods = {'Envelope CorrCA', 'Envelope CorrCA D', 'Envelope CorrCA T'};
+methods = {'Envelope CorrCA T'};
 nMethods = length(methods);
-colors = lines(nMethods); % Цвета для графиков
+colors = lines(nMethods);
 
-% Инициализация массивов [Nsnr x NMC x nMethods]
 env_corr_res  = zeros(Nsnr, NMC, nMethods);
 patt_corr_res = zeros(Nsnr, NMC, nMethods);
 
-%% 3. Основной цикл
+%%
 fprintf('Запуск симуляции...\n');
-
+z_corr_res = []; env_corr_res = []; patt_corr_res = [];
 for snr_i = 1:Nsnr
     SNR = snr_vec(snr_i);
     fprintf('Обработка SNR: 10^{%.1f}...\n', log10(SNR));
     
-    parfor mc_i = 1:NMC
-        % Генерация данных (замени на свою функцию, если нужно)
+    for mc_i = 1:NMC
         [Xtrials, Xraw, tm, TgPa] = gen_dat_corrca( ...
             G, NConstSrc, Ntg, flanker, TrLeSe, ...
             Fs, NTr, NLclSrc, SNR);
         
         tmraw = repmat(tm,[1,NTr]);
         
-        % Проходим по всем методам
+        % --- ПОДГОТОВКА ИСТИННОГО ТАРГЕТА ДЛЯ Z_TRIALS ---
+        tm_epo = epoch_data((tm+min(tm)).^2', Fs, Wsize, Ssize); % [W_samples, 1, n_epochs]
+        tm_z_true = reshape(mean(tm_epo, 1), [], 1); % [n_epochs, 1]
+        tm_z_all = repmat(tm_z_true, [NTr, 1]);      % [n_epochs * NTr, 1]
+        % -------------------------------------------------
+        
         for m = 1:nMethods
             method_name = methods{m};
             
-            % --- Блок вызова алгоритма ---
-            % В зависимости от имени вызываем нужную функцию
             if strcmp(method_name, 'Envelope CorrCA')
-                [W, A] = env_corrca(Xtrials, Fs, Wsize, Ssize);
-                
-            elseif strcmp(method_name, 'Hilbert CorrCA')
-                % Вызов Hilbert версии (замени на реальный)
-                [W, A] = env_corrca_t(Xtrials, Fs); 
+                [W, A, z_trials] = env_corrca(Xtrials, Fs, Wsize, Ssize);
+            elseif strcmp(method_name, 'Envelope CorrCA D')
+                [W, A, z_trials] = env_corrca_d(Xtrials, Fs, Wsize, Ssize);
+            elseif strcmp(method_name, 'Envelope CorrCA T')
+                [W, A, z_trials] = env_corrca_t(Xtrials, Fs, Wsize, Ssize); 
+            end
             
-            % Устранение лишних размерностей (если методы возвращают 3D)
-            if ndims(W) == 3, W = squeeze(W(1,:,:)); end
-            if ndims(A) == 3, A = squeeze(A(1,:,:)); end
-            
-            % --- Блок отбора: берем ТОЛЬКО первую и последнюю компоненты ---
-            W_cand = [W(:,1), W(:,end)];
-            A_cand = [A(:,1), A(:,end)];
+            W_cand = [squeeze(W(1,:,1)); squeeze(W(1,:,end))]';
+            A_cand = [squeeze(A(1,:,1)); squeeze(A(1,:,end))]';
             
             env_corr = zeros(1, 2);
+            z_corr   = zeros(1, 2);
             env_cands = zeros(length(tmraw), 2);
             
             for w_i = 1:2
                 w = W_cand(:, w_i);
-                env_cands(:, w_i) = abs(hilbert(w' * Xraw));
                 
-                % Берем abs, т.к. метод инвариантен к знаку и мы ищем максимальную ко-модуляцию
-                env_corr(w_i) = abs(corr(env_cands(:, w_i), tmraw')); 
+                env_cands(:, w_i) = abs(hilbert(w' * Xraw));
+                env_corr(w_i) = abs(corr(env_cands(:, w_i), tmraw'));                 
             end
             
-            % Выбираем наилучшую из двух
             [b_corr_env, b_idx] = max(env_corr);
             
-            % Сохраняем результаты
             env_corr_res(snr_i, mc_i, m)  = b_corr_env;
             patt_corr_res(snr_i, mc_i, m) = abs(corr(A_cand(:, b_idx), TgPa));
+            
+            abs(corr(reshape(z_trials(:, 1, :), [], 1), tm_z_all))
+            z_corr_res(snr_i, mc_i, m) = abs(corr(reshape(z_trials(:, 1, :), [], 1), tm_z_all));
         end
     end
 end
 
-%% 4. Расчет статистик 
+%% Агрегация результатов
 N = NMC;
-mean_env  = squeeze(mean(env_corr_res, 2));   % [Nsnr x nMethods]
+mean_env  = squeeze(mean(env_corr_res, 2));   
 ci_env    = squeeze(1.96 * std(env_corr_res, 0, 2) / sqrt(N));
 
 mean_patt = squeeze(mean(patt_corr_res, 2));
 ci_patt   = squeeze(1.96 * std(patt_corr_res, 0, 2) / sqrt(N));
 
-%% 5. Настройка оси X (Твой код)
+mean_z    = squeeze(mean(z_corr_res, 2));    
+ci_z      = squeeze(1.96 * std(z_corr_res, 0, 2) / sqrt(N));
+
+% Настройка оси X (SNR)
 snr_powers = log10(snr_vec); 
 idx_ticks = 1:2:length(snr_powers);
 [~, zero_idx] = min(abs(snr_powers - 0));
 final_tick_indices = unique(sort([idx_ticks, zero_idx]));
 ticks_to_show = snr_powers(final_tick_indices);
-
 x_labels = cell(1, length(ticks_to_show));
 for i = 1:length(ticks_to_show)
     if abs(ticks_to_show(i)) < 1e-9
@@ -137,15 +138,14 @@ for i = 1:length(ticks_to_show)
     end
 end
 
-%% 6. Отрисовка графиков
-figure('Name', 'SNR Analysis: All Methods', 'Position', [100, 100, 1000, 450]);
+% Отрисовка
+figure('Name', 'SNR Analysis: All Methods', 'Position', [100, 100, 1500, 450]); % Сделал окно шире
+titles = {'Latent Component (z\_trials) Corr', 'Spatial Pattern Correlation', 'Final Envelope Correlation'};
+means_all = {mean_z, mean_patt, mean_env}; % Порядок: Сначала латентная, потом паттерн, потом итог
+cis_all   = {ci_z, ci_patt, ci_env};
 
-titles = {'Envelope Correlation', 'Spatial Pattern Correlation'};
-means_all = {mean_env, mean_patt};
-cis_all   = {ci_env, ci_patt};
-
-for p = 1:2
-    subplot(1, 2, p); hold on;
+for p = 1:3
+    subplot(1, 3, p); hold on;
     
     h_plots = zeros(1, nMethods);
     for m = 1:nMethods
@@ -175,3 +175,8 @@ for p = 1:2
         legend(h_plots, methods, 'Location', 'southeast', 'FontSize', 10); 
     end
 end
+
+%%
+
+
+

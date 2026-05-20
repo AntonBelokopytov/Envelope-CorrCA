@@ -1,4 +1,4 @@
-function [W, A, z_trials, X_covs] = env_corrca(X, Fs, Wsize, Ssize, lambda)
+function [W, A, z_trials, X_epochs, raw_var] = env_corrca_w(X, Fs, Wsize, Ssize, lambda)
     if nargin < 5
         lambda = 1e-5; 
     end
@@ -9,6 +9,7 @@ function [W, A, z_trials, X_covs] = env_corrca(X, Fs, Wsize, Ssize, lambda)
     end
     Xmean = mean(X,3);
     
+    % Преаллокация для X_epochs
     temp_epo = epoch_data(X(:,:,1), Fs, Wsize, Ssize);
     [~, ~, n_epochs] = size(temp_epo);
     X_epochs = zeros(size(temp_epo,1), n_channels, n_epochs, n_trials);
@@ -19,29 +20,37 @@ function [W, A, z_trials, X_covs] = env_corrca(X, Fs, Wsize, Ssize, lambda)
         X_epochs(:,:,:,tr_idx) = epoch_data(mX, Fs, Wsize, Ssize);
     end
     
+    % Вычисление ковариационных матриц
     X_covs = zeros(n_channels, n_channels, n_epochs, n_trials);
     for j=1:n_trials
         for i=1:n_epochs
+            % squeeze необходим, чтобы передать в cov 2D-матрицу
             X_covs(:,:,i,j) = cov(squeeze(X_epochs(:,:,i,j)));
         end
     end
+
+    % Средняя ковариация по всем эпохам и триалам
+    Cm = mean(X_covs(:,:,:), 3);
+    Cm_r = Cm + lambda * eye(size(Cm)) * trace(Cm) / size(Cm,1);
+    Wm = Cm_r^-0.5;
     
     D_vec = n_channels * (n_channels + 1) / 2;
-    X_covsVec = zeros(n_epochs, D_vec, n_trials);
+    X_covsVecW = zeros(n_epochs, D_vec, n_trials);
     for j=1:n_trials
         for i=1:n_epochs
-            X_covsVec(i,:,j) = cov2upper(X_covs(:,:,i,j))';
+            X_covsVecW(i,:,j) = cov2upper(Wm * X_covs(:,:,i,j) * Wm')';
         end
     end
     
-    [Vc, ~, ~] = corrca(X_covsVec, lambda);
+    % Вызов corrca (теперь поддерживает передачу lambda/gamma)
+    [Vc, ~, ~] = corrca(X_covsVecW, lambda);
     
     n_comps = size(Vc, 2);
     z_trials = zeros(n_epochs, n_comps, n_trials);
     raw_var = zeros(n_comps, n_trials);
     
     for j = 1:n_trials
-        trial_data = squeeze(X_covsVec(:,:,j));
+        trial_data = squeeze(X_covsVecW(:,:,j));
         z_tr = trial_data * Vc; 
         
         raw_var(:, j) = var(z_tr, 0, 1)'; 

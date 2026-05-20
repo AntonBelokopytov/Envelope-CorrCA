@@ -1,4 +1,4 @@
-function [W, A, z_trials, X_epochs] = env_corrca_t(X, Fs, Wsize, Ssize, lambda)
+function [W, A, z_trials, X_covs] = env_corrca_t(X, Fs, Wsize, Ssize, lambda)
     if nargin < 5
         lambda = 1e-3; 
     end
@@ -33,7 +33,7 @@ function [W, A, z_trials, X_epochs] = env_corrca_t(X, Fs, Wsize, Ssize, lambda)
         
     X_covs_flat = reshape(X_covs_reg, n_channels, n_channels, n_epochs * n_trials);
     % Cm = riemann_mean(X_covs_flat);
-    Cm = mean(X_covs_flat,3);
+    Cm = log_euclidean_mean(X_covs_flat);
     X_covsT_flat = Tangent_space(X_covs_flat, Cm);
     
     D_vec = size(X_covsT_flat, 1); 
