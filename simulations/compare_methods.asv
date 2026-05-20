@@ -1,182 +1,151 @@
 close all
 clear
 clc
-
 ft_path = 'D:\OS(CURRENT)\scripts\2Git\fieldtrip';
-if ~exist('ft_defaults','file')
-    addpath(ft_path);
-end
+if ~exist('ft_defaults','file'), addpath(ft_path); end
 ft_defaults;
 
-%%
+%% Параметры и данные
+% ... (код инициализации данных остается без изменений) ...
 elec = load("D:\OS(CURRENT)\data\simulation_support_data\eeg\elec.mat").elec;
-topo = [];
-topo.dimord = 'chan_time';
-topo.label  = elec.label;
-topo.time   = 0;
-topo.elec   = elec;
-
-laycfg = [];
-laycfg.elec = elec;
-lay = ft_prepare_layout(laycfg);
-
-cfg = [];
-cfg.marker       = '';
-cfg.layout       = lay;
-cfg.comment      = 'no';
-cfg.style        = 'fill';
-cfg.markersymbol = '';
-cfg.colorbar     = 'no'; 
-cfg.layout.pos(:, 1:2) = cfg.layout.pos(:, 1:2) * 1.1; 
-cfg.layout.pos(:, 2) = cfg.layout.pos(:, 2) - 0.05;
-
 G = load('D:\OS(CURRENT)\data\simulation_support_data\eeg\MNE_EEG_FWD_TRPL.mat').MNE_EEG_FWD_TRPL;
-
-%% 
-NConstSrc = 91; 
-Ntg = 1; 
-flanker = 1; 
-TrLeSe = 5; 
-Fs = 100; 
-NTr = 20; 
-NLclSrc = 10;
-Wsize = 1 / 2; 
-Ssize = Wsize / 2;
-
-% snr_vec = 10.^(-1.4:0.2:1);
-snr_vec = 10.^(0.8:0.2:1);
-Nsnr = length(snr_vec);
-NMC = 10;
-
-% methods = {'Envelope CorrCA', 'Envelope CorrCA D', 'Envelope CorrCA T'};
-methods = {'Envelope CorrCA T'};
+NConstSrc = 91; Ntg = 1; flanker = 1; TrLeSe = 5; Fs = 100; NTr = 20; NLclSrc = 10;
+Wsize = 1 / 2; Ssize = Wsize / 2;
+snr_vec = 10.^(-1.4:0.2:1);
+Nsnr = length(snr_vec); NMC = 5;
+methods = {'SPoC_\lambda', 'Envelope CorrCA', 'Envelope CorrCA D', 'Envelope CorrCA T'};
 nMethods = length(methods);
 colors = lines(nMethods);
 
-env_corr_res  = zeros(Nsnr, NMC, nMethods);
-patt_corr_res = zeros(Nsnr, NMC, nMethods);
+%% Инициализация массивов метрик
+% Результаты: [SNR, MC, Method]
+itc_hidden_res  = NaN(Nsnr, NMC, nMethods);
+itc_final_res   = NaN(Nsnr, NMC, nMethods);
+z_corr_res      = NaN(Nsnr, NMC, nMethods);
+cov_corr_res    = NaN(Nsnr, NMC, nMethods);
+patt_corr_res   = NaN(Nsnr, NMC, nMethods);
+var_hidden_res  = NaN(Nsnr, NMC, nMethods);
+var_final_res   = NaN(Nsnr, NMC, nMethods);
 
-%%
-fprintf('Запуск симуляции...\n');
-z_corr_res = []; env_corr_res = []; patt_corr_res = [];
+fprintf('Запуск симуляции для %d методов...\n', nMethods);
 for snr_i = 1:Nsnr
     SNR = snr_vec(snr_i);
     fprintf('Обработка SNR: 10^{%.1f}...\n', log10(SNR));
     
     for mc_i = 1:NMC
-        [Xtrials, Xraw, tm, TgPa] = gen_dat_corrca( ...
-            G, NConstSrc, Ntg, flanker, TrLeSe, ...
-            Fs, NTr, NLclSrc, SNR);
-        
-        tmraw = repmat(tm,[1,NTr]);
-        
-        % --- ПОДГОТОВКА ИСТИННОГО ТАРГЕТА ДЛЯ Z_TRIALS ---
-        tm_epo = epoch_data((tm+min(tm)).^2', Fs, Wsize, Ssize); % [W_samples, 1, n_epochs]
-        tm_z_true = reshape(mean(tm_epo, 1), [], 1); % [n_epochs, 1]
-        tm_z_all = repmat(tm_z_true, [NTr, 1]);      % [n_epochs * NTr, 1]
-        % -------------------------------------------------
-        
+        [Xtrials, ~, tm, TgPa] = gen_dat_corrca(G, NConstSrc, Ntg, flanker, TrLeSe, Fs, NTr, NLclSrc, SNR);
+        tm_epo = epoch_data((tm - min(tm)).^2', Fs, Wsize, Ssize);
+        tm_z_true = reshape(mean(tm_epo, 1), [], 1); 
+        tm_z_all = repmat(tm_z_true, [NTr, 1]);
+        tm_z_all = (tm_z_all - mean(tm_z_all)) ./ std(tm_z_all);
+
+        X_epochs = [];
+        for tr_i=1:NTr, X_epochs(:,:,:,tr_i) = epoch_data(Xtrials(:,:,tr_i),Fs,Wsize,Ssize); end
+        NEp = size(X_epochs,3);
+        X_covs = [];
+        for tr_i=1:NTr
+            for ep_i=1:NEp, X_covs(:,:,ep_i,tr_i) = cov(squeeze(X_epochs(:,:,ep_i,tr_i))); end
+        end
+
         for m = 1:nMethods
             method_name = methods{m};
+            is_spoc = strcmp(method_name, 'SPoC_\lambda');
             
-            if strcmp(method_name, 'Envelope CorrCA')
-                [W, A, z_trials] = env_corrca(Xtrials, Fs, Wsize, Ssize);
-            elseif strcmp(method_name, 'Envelope CorrCA D')
-                [W, A, z_trials] = env_corrca_d(Xtrials, Fs, Wsize, Ssize);
-            elseif strcmp(method_name, 'Envelope CorrCA T')
-                [W, A, z_trials] = env_corrca_t(Xtrials, Fs, Wsize, Ssize); 
-            end
-            
-            W_cand = [squeeze(W(1,:,1)); squeeze(W(1,:,end))]';
-            A_cand = [squeeze(A(1,:,1)); squeeze(A(1,:,end))]';
-            
-            env_corr = zeros(1, 2);
-            z_corr   = zeros(1, 2);
-            env_cands = zeros(length(tmraw), 2);
-            
-            for w_i = 1:2
-                w = W_cand(:, w_i);
+            % 1. Выбор метода и получение весов
+            if is_spoc
+                [W, A] = spoc(X_epochs(:,:,:), tm_z_all');
+                W_cand = W(:,1); 
+                A_cand = A(:,1);
+            else
+                if strcmp(method_name, 'Envelope CorrCA'), [W, A, z_trials] = env_corrca(Xtrials, Fs, Wsize, Ssize);
+                elseif strcmp(method_name, 'Envelope CorrCA D'), [W, A, z_trials] = env_corrca_d(Xtrials, Fs, Wsize, Ssize);
+                elseif strcmp(method_name, 'Envelope CorrCA T'), [W, A, z_trials] = env_corrca_t(Xtrials, Fs, Wsize, Ssize);
+                end
+                W_cand = [squeeze(W(1,:,1)); squeeze(W(1,:,end))]';
+                A_cand = [squeeze(A(1,:,1)); squeeze(A(1,:,end))]';
                 
-                env_cands(:, w_i) = abs(hilbert(w' * Xraw));
-                env_corr(w_i) = abs(corr(env_cands(:, w_i), tmraw'));                 
+                % 2. Расчет метрик СКРЫТОЙ компоненты
+                z_corr_res(snr_i, mc_i, m) = abs(corr(reshape(z_trials(:, 1, :), [], 1), tm_z_all));
+                var_hidden_res(snr_i, mc_i, m) = var(z_trials(:));
+                itc_hidden_res(snr_i, mc_i, m) = compute_itc(squeeze(z_trials(:, 1, :)));
             end
             
-            [b_corr_env, b_idx] = max(env_corr);
+            % 3. Итоговая компонента (Covariance-based)
+            cov_corr_cands = zeros(1, 2);
+            for w_i = 1:size(W_cand,2)
+                w = W_cand(:, w_i);
+                env_vals = zeros(NEp, NTr);
+                for tr_i=1:NTr
+                    for ep_i = 1:NEp, env_vals(ep_i,tr_i) = w' * squeeze(X_covs(:,:,ep_i,tr_i)) * w; end
+                end
+                cov_corr_cands(w_i) = abs(corr(env_vals(:), tm_z_all(:)));
+            end
+            [~, b_idx] = max(cov_corr_cands);
             
-            env_corr_res(snr_i, mc_i, m)  = b_corr_env;
+            % Финальные расчеты
+            final_comp = zeros(NEp, NTr);
+            w_best = W_cand(:, b_idx);
+            for tr_i = 1:NTr
+                for ep_i = 1:NEp, final_comp(ep_i, tr_i) = w_best' * squeeze(X_covs(:,:,ep_i,tr_i)) * w_best; end
+            end
+            
+            cov_corr_res(snr_i, mc_i, m)  = cov_corr_cands(b_idx);
             patt_corr_res(snr_i, mc_i, m) = abs(corr(A_cand(:, b_idx), TgPa));
-            
-            abs(corr(reshape(z_trials(:, 1, :), [], 1), tm_z_all))
-            z_corr_res(snr_i, mc_i, m) = abs(corr(reshape(z_trials(:, 1, :), [], 1), tm_z_all));
+            itc_final_res(snr_i, mc_i, m) = compute_itc(final_comp);
+            var_final_res(snr_i, mc_i, m) = var(final_comp(:));
         end
     end
 end
 
-%% Агрегация результатов
-N = NMC;
-mean_env  = squeeze(mean(env_corr_res, 2));   
-ci_env    = squeeze(1.96 * std(env_corr_res, 0, 2) / sqrt(N));
+%% Визуализация 1: Корреляции
+figure('Name', 'Correlations Analysis', 'Position', [100, 100, 1200, 400]);
+metrics1 = {z_corr_res, cov_corr_res, patt_corr_res};
+titles1 = {'Hidden Comp Corr', 'Final Comp Corr', 'Pattern Corr'};
+ylabels = {'r', 'r', 'r'};
+snr_powers = log10(snr_vec);
 
-mean_patt = squeeze(mean(patt_corr_res, 2));
-ci_patt   = squeeze(1.96 * std(patt_corr_res, 0, 2) / sqrt(N));
-
-mean_z    = squeeze(mean(z_corr_res, 2));    
-ci_z      = squeeze(1.96 * std(z_corr_res, 0, 2) / sqrt(N));
-
-% Настройка оси X (SNR)
-snr_powers = log10(snr_vec); 
-idx_ticks = 1:2:length(snr_powers);
-[~, zero_idx] = min(abs(snr_powers - 0));
-final_tick_indices = unique(sort([idx_ticks, zero_idx]));
-ticks_to_show = snr_powers(final_tick_indices);
-x_labels = cell(1, length(ticks_to_show));
-for i = 1:length(ticks_to_show)
-    if abs(ticks_to_show(i)) < 1e-9
-        x_labels{i} = '10^{0}'; 
-    else
-        x_labels{i} = sprintf('10^{%.1f}', ticks_to_show(i));
-    end
-end
-
-% Отрисовка
-figure('Name', 'SNR Analysis: All Methods', 'Position', [100, 100, 1500, 450]); % Сделал окно шире
-titles = {'Latent Component (z\_trials) Corr', 'Spatial Pattern Correlation', 'Final Envelope Correlation'};
-means_all = {mean_z, mean_patt, mean_env}; % Порядок: Сначала латентная, потом паттерн, потом итог
-cis_all   = {ci_z, ci_patt, ci_env};
-
-for p = 1:3
-    subplot(1, 3, p); hold on;
-    
-    h_plots = zeros(1, nMethods);
+for k = 1:3
+    subplot(1, 3, k); hold on;
     for m = 1:nMethods
-        y  = means_all{p}(:, m)';
-        ci = cis_all{p}(:, m)';
+        y = squeeze(mean(metrics1{k}(:, :, m), 2))';
+        std_dev = squeeze(std(metrics1{k}(:, :, m), 0, 2))';
         
-        % Отрисовка доверительного интервала (линии)
-        plot(snr_powers, y + ci, '--', 'Color', colors(m,:), 'HandleVisibility', 'off');
-        plot(snr_powers, y - ci, '--', 'Color', colors(m,:), 'HandleVisibility', 'off');
-        
-        % Основная линия
-        h_plots(m) = plot(snr_powers, y, '-o', 'LineWidth', 1.5, 'Color', colors(m,:), ...
-                          'MarkerFaceColor', 'w');
+        % Заливка отклонения
+        fill([snr_powers, fliplr(snr_powers)], [y-std_dev, fliplr(y+std_dev)], ...
+            colors(m,:), 'FaceAlpha', 0.1, 'EdgeColor', 'none', 'HandleVisibility', 'off');
+        plot(snr_powers, y, '-o', 'LineWidth', 1.5, 'Color', colors(m,:), 'DisplayName', methods{m});
     end
-    
-    % Оформление
-    grid on;
-    title(titles{p}, 'FontSize', 12, 'FontWeight', 'bold');
-    xlabel('SNR (as Envelope Variance)', 'FontSize', 11);
-    ylabel('Correlation (r)', 'FontSize', 11);
-    xticks(ticks_to_show);
-    xticklabels(x_labels);
-    xlim([min(snr_powers) max(snr_powers)]);
-    ylim([0 1.05]);
-    
-    if p == 1
-        legend(h_plots, methods, 'Location', 'southeast', 'FontSize', 10); 
-    end
+    grid on; title(titles1{k}, 'FontWeight', 'bold'); 
+    xlabel('log10(SNR)'); ylabel(ylabels{k}); ylim([0 1.05]);
+    if k == 1, legend('Location', 'best', 'FontSize', 8); end
 end
 
-%%
+%% Визуализация 2: ITC и Дисперсия
+figure('Name', 'ITC and Variance Analysis', 'Position', [100, 100, 1200, 600]);
+% Метрики: 2.1 ITC Hidden, 2.2 ITC Final, 2.3 Var Hidden, 2.4 Var Final
+metrics2 = {itc_hidden_res, itc_final_res, var_hidden_res, var_final_res};
+titles2 = {'ITC Hidden', 'ITC Final', 'Var Hidden', 'Var Final'};
+ylabels2 = {'ITC', 'ITC', 'Var', 'Var'};
 
+for k = 1:4
+    subplot(2, 2, k); hold on;
+    for m = 1:nMethods
+        y  = squeeze(mean(metrics2{k}(:, :, m), 2))'; 
+        std_dev = squeeze(std(metrics2{k}(:, :, m), 0, 2))';
+        
+        % Если для SPoC везде NaN, plot просто пропустит метод
+        fill([snr_powers, fliplr(snr_powers)], [y-std_dev, fliplr(y+std_dev)], ...
+            colors(m,:), 'FaceAlpha', 0.1, 'EdgeColor', 'none', 'HandleVisibility', 'off');
+        plot(snr_powers, y, '-o', 'LineWidth', 1.5, 'Color', colors(m,:), 'DisplayName', methods{m});
+    end
+    grid on; title(titles2{k}, 'FontWeight', 'bold'); 
+    xlabel('log10(SNR)'); ylabel(ylabels2{k});
+    if k == 1, legend('Location', 'best', 'FontSize', 8); end
+end
 
-
+function itc = compute_itc(data_mat)
+    n_tr = size(data_mat, 2);
+    if n_tr < 2, itc = 0; return; end
+    C = corr(data_mat);
+    itc = (sum(C(:)) - n_tr) / (n_tr * (n_tr - 1));
+end
