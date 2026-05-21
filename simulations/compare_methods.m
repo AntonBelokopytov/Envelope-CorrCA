@@ -51,16 +51,28 @@ for snr_i = 1:Nsnr
             method_name = methods{m};
             is_spoc = strcmp(method_name, 'SPoC_\lambda');
             
+            % --- ДОБАВЛЕНО: Явная инициализация временных переменных для parfor ---
+            W = []; 
+            A = []; 
+            z_trials = [];
+            W_cand = []; 
+            A_cand = [];
+            % ----------------------------------------------------------------------
+            
             % 1. Выбор метода и получение весов
             if is_spoc
                 [W, A] = spoc(X_epochs(:,:,:), tm_z_all');
                 W_cand = W(:,1); 
                 A_cand = A(:,1);
             else
-                if strcmp(method_name, 'Envelope CorrCA'), [W, A, z_trials] = env_corrca(Xtrials, Fs, Wsize, Ssize);
-                elseif strcmp(method_name, 'Envelope CorrCA D'), [W, A, z_trials] = env_corrca_d(Xtrials, Fs, Wsize, Ssize);
-                elseif strcmp(method_name, 'Envelope CorrCA T'), [W, A, z_trials] = env_corrca_t(Xtrials, Fs, Wsize, Ssize);
+                if strcmp(method_name, 'Envelope CorrCA')
+                    [W, A, z_trials] = env_corrca(Xtrials, Fs, Wsize, Ssize);
+                elseif strcmp(method_name, 'Envelope CorrCA D')
+                    [W, A, z_trials] = env_corrca_d(Xtrials, Fs, Wsize, Ssize);
+                elseif strcmp(method_name, 'Envelope CorrCA T')
+                    [W, A, z_trials] = env_corrca_t(Xtrials, Fs, Wsize, Ssize);
                 end
+                
                 W_cand = [squeeze(W(1,:,1)); squeeze(W(1,:,end))]';
                 A_cand = [squeeze(A(1,:,1)); squeeze(A(1,:,end))]';
                 
@@ -76,7 +88,9 @@ for snr_i = 1:Nsnr
                 w = W_cand(:, w_i);
                 env_vals = zeros(NEp, NTr);
                 for tr_i=1:NTr
-                    for ep_i = 1:NEp, env_vals(ep_i,tr_i) = w' * squeeze(X_covs(:,:,ep_i,tr_i)) * w; end
+                    for ep_i = 1:NEp
+                        env_vals(ep_i,tr_i) = w' * squeeze(X_covs(:,:,ep_i,tr_i)) * w; 
+                    end
                 end
                 cov_corr_cands(w_i) = abs(corr(env_vals(:), tm_z_all(:)));
             end
@@ -86,14 +100,16 @@ for snr_i = 1:Nsnr
             final_comp = zeros(NEp, NTr);
             w_best = W_cand(:, b_idx);
             for tr_i = 1:NTr
-                for ep_i = 1:NEp, final_comp(ep_i, tr_i) = w_best' * squeeze(X_covs(:,:,ep_i,tr_i)) * w_best; end
+                for ep_i = 1:NEp
+                    final_comp(ep_i, tr_i) = w_best' * squeeze(X_covs(:,:,ep_i,tr_i)) * w_best; 
+                end
             end
             
             cov_corr_res(snr_i, mc_i, m)  = cov_corr_cands(b_idx);
             patt_corr_res(snr_i, mc_i, m) = abs(corr(A_cand(:, b_idx), TgPa));
             itc_final_res(snr_i, mc_i, m) = compute_itc(final_comp);
             var_final_res(snr_i, mc_i, m) = var(final_comp(:));
-        end
+        end    
     end
 end
 
