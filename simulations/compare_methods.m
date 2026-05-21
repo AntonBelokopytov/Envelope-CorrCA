@@ -109,7 +109,7 @@ for snr_i = 1:Nsnr
             patt_corr_res(snr_i, mc_i, m) = abs(corr(A_cand(:, b_idx), TgPa));
             itc_final_res(snr_i, mc_i, m) = compute_itc(final_comp);
             var_final_res(snr_i, mc_i, m) = var(final_comp(:));
-        end    
+        end
     end
 end
 
